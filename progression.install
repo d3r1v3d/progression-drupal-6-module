@@ -8,7 +8,6 @@
  */
 function progression_schema() {
     $schema['progression_counter'] = array(
-        'description' => 'A simple tuple that describes a target date for a countup / countdown and an associated human-readable label.',
         'fields' => array(
             'vid' => array(
                 'description' => 'Primary Key: The {node}.vid (node revision ID) of the counter.',
