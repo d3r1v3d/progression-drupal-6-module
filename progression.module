@@ -1,0 +1,275 @@
+<?php
+// $Id$
+
+define('PROGRESSION_ENUM_COUNT_UP',   'COUNT_UP');
+define('PROGRESSION_ENUM_COUNT_DOWN', 'COUNT_DOWN');
+
+/**
+ * Display help and module information.
+ *
+ * @param string $path which part of the site we're displaying help in
+ * @param array  $arg  an array containing the current path as returned from that arg function
+ * @return string help text contextualized by the path parameter
+ */
+function progression_help($path, $arg) {
+    switch ($path) {
+    case 'admin/help#progression':
+        return '<p>' . t('Facilitates the management and display of user-specified countups and countdowns.') . '</p>';
+    }
+
+    return '';
+}
+
+/**
+ * Defines the human-readable name of node types and other attributes.
+ *
+ * @return array an array of information concerning this module's node types
+ */
+function progression_node_info() {
+    return array(
+        'progression_counter' => array(
+            'name' => t('Counter'),
+            'module' => 'progression',
+            'description' => t('A user-created counter object that counts down to or up from a specified target date.'),
+            'has_title' => TRUE,
+            'title_label' => t('Name'),
+            'has_body' => TRUE,
+            'body_label' => t('Description')
+        )
+    );
+}
+
+/**
+ * Defines a set of valid permissions for this module.
+ *
+ * @return array an array of (nonduplicated) valid permissions for this module
+ */
+function progression_perm() {
+    return array('create progression', 'delete progression', 'update progression', 'view progression');
+}
+
+/**
+ * Limits access to specific node types based on user privileges.
+ *
+ * @param string  $op      one of ('create', 'delete', 'update', 'view')
+ * @param object  $node    the node on which the operation is to be performed
+ * @param array   $account represents the user for whom the operation is to be performed
+ * @return boolean TRUE if the operation is allowed based on the node type and account privileges, FALSE if the operation is to be denied,
+ *                 and null to not override the settings in the node_access table or access control modules
+ */
+function progression_access($op, $node, $account) {
+    switch ($op) {
+    case 'create':
+        return user_access('create progression', $account);
+
+    case 'delete':
+        // users are only allowed to delete their own counters
+        if ($account->uid == $node->uid) {
+            return user_access('delete progression', $account);
+        }
+        break;
+
+    case 'update':
+        // users are only allowed to update their own counters
+        if ($account->uid == $node->uid) {
+            return user_access('update progression', $account);
+        }
+        break;
+    }
+
+    return null;
+}
+
+/**
+ * Generate block content.
+ *
+ * @param string  $op    one of ('list', 'configure', 'view', 'save')
+ * @param integer $delta block identifier
+ * @param array   $edit  used in conjunection with the 'save' $op parameter
+ * @return string generated block content
+ */
+function progression_block($op = 'list', $delta = 0, $edit = array()) {
+    switch ($op) {
+    // generate a list of all module blocks for the admin / block page
+    case 'list':
+        $block[0]['info'] = t('Countdowns');
+        $block[1]['info'] = t('Countups');
+        return $block;
+
+    case 'configure':
+        break;
+
+    case 'view':
+        break;
+
+    case 'save':
+        break;
+    }
+}
+
+/**
+ * Displays a node editing form.
+ * 
+ * @param object  $node       the node being added or edited
+ * @param array   $form_state the form state array
+ * @return array an array containing the form elements to be displayed in the node edit form
+ */
+ function progression_counter_form(&$node, $form_state) {
+    $type = node_get_types('type', $node);
+
+    if ($type->has_title) {
+        $form['title'] = array(
+            '#type' => 'textfield',
+            '#title' => check_plain($type->title_label),
+            '#required' => TRUE,
+            '#default_value' => $node->title
+        );
+    }
+
+    $form['counterType'] = array(
+        '#type' => 'select',
+        '#title' => t('Counter Type'),
+        '#default_value' => isset($node->counterType) ? $node->counterType : PROGRESSION_ENUM_COUNT_UP,
+        '#options' => drupal_map_assoc(array(PROGRESSION_ENUM_COUNT_UP, PROGRESSION_ENUM_COUNT_DOWN)),
+        '#description' => t('The type of counter to use (e.g. countup, countdown).'),
+        '#required' => TRUE
+    );
+    $form['targetDate'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Target Date'),
+        '#default_value' => isset($node->targetDate) ? $node->targetDate : format_date(time(), 'small'),
+        '#description' => t("The date associated with this counter. For countups, this is the start date; for countdowns, this is the date we're counting to."),
+        '#required' => TRUE
+    );
+    $form['label'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Label'),
+        '#size' => 48,
+        '#maxLength' => 64,
+        '#default_value' => isset($node->label) ? $node->label : '',
+        '#description' => t('Human-readable description of the counter.'),
+        '#required' => TRUE
+    );
+
+    return $form;
+ }
+
+ /**
+  * Insert hook for progression counter objects.
+  *
+  * @param object $node the node logically attached to the progression counter being inserted
+  */
+function progression_counter_insert($node) {
+    // TODO: see if this is necessary
+    // _progression_counter_set_defaults(&$node);
+
+    db_query(
+        "INSERT INTO {progression_counter} (vid, nid, counterType, targetDate, label)"
+        . "VALUES (%d, %d, '%s', '%s', '%s')",
+        $node->vid, $node->nid, $node->counterType, $node->targetDate, $node->label
+    );
+}
+
+/**
+ * Update hook for progression counter objects.
+ *
+ * @param object $node the node logically attached to the progression counter being updated
+ */
+function progression_counter_update($node) {
+    if ($node->revision) {
+        progression_counter_insert($node);
+    }
+    else {
+        db_query(
+            "UPDATE {progression_counter} SET counterType = '%s', targetDate = '%s', label = '%s' WHERE vid = %d",
+            $node->counterType, $node->targetDate, $node->label, $node->vid
+        );
+    }
+}
+
+/**
+ * Delete hook for progression counter objects.
+ *
+ * @param object $node the node logically attached to the progression counter being deleted
+ */
+function progression_counter_delete($node) {
+    db_query(
+        'DELETE FROM {progression_counter} WHERE nid = %d',
+        $node->nid
+    );
+}
+
+/**
+ * Node manipulation hook for progression counter objects.
+ *
+ * @param object $node the node that the operation is being performed upon
+ * @param string $op   the operation being performed
+ * @param array  $a3
+ * @param array  $a4
+ */
+function progression_counter_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+    switch ($op) {
+    case 'delete revision':
+        db_query(
+            'DELETE FROM {progression_counter} WHERE vid = %d',
+            node->vid
+        );
+        break;
+    }
+}
+
+/**
+ * Load hook for progression counter objects.
+ *
+ * @param object $node the node logically attached to the progression counter being updated
+ * @return object loaded object corresponding to the node parameter
+ */
+function progression_counter_load($node) {
+    return db_fetch_object(
+        db_query(
+            'SELECT * from {progression_counter} WHERE vid = %d',
+            $node->vid
+        )
+    );
+}
+
+/**
+ * Registers a module theme implementation(s).
+ *
+ * @param array  $existing an array of existing implementations that may be used for override purposes
+ * @param string $type     theme type being processed. one of ('module', 'base_theme_engine', 'theme_engine', 'base_theme', 'theme')
+ * @param string $theme    the actual name of the theme being checked
+ * @param string $path     the directory path of the theme or module
+ * @return array a keyed array of theme hooks
+ */
+function progression_counter_theme($existing, $type, $theme, $path) {
+    return array(
+        'progression_counter_info' => array(
+            'template' => 'progression_counter_info',
+            'arguments' => array(
+                'counterType' => NULL,
+                'targetDate' => NULL,
+                'label' => NULL
+            )
+        )
+    );
+}
+
+/**
+ * Generates a display of the given node.
+ *
+ * @param object  $node   the node to display
+ * @param boolean $teaser flag indicating whether to show the teaser only or the full form
+ * @param boolean $page   flag indicating whether the node is being displayed by itself as a page
+ * @param boolean $links  flag indicating whether to display node links - links are omitted for node previews
+ * @return string html representation of the themed node
+ */
+function progression_counter_view($node, $teaser, $page, $links) {
+    $node = node_prepare($node, $teaser);
+    $node->content['progression_counter_info'] = array(
+        '#value' => theme(
+            'progression_counter_info', 
+            $node->counterType, $node->targetDate, check_markup($node->label)
+        )
+    );
+}

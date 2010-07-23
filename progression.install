@@ -1,0 +1,71 @@
+<?php
+// $Id$
+
+/**
+ * Defines the current version of the database schema.
+ *
+ * @return array a schema definition structure array. for each element, the key is a table name and the associated value is a structure definition
+ */
+function progression_schema() {
+    $schema['progression_counter'] = array(
+        'description' => 'A simple tuple that describes a target date for a countup / countdown and an associated human-readable label.',
+        'fields' => array(
+            'vid' => array(
+                'description' => 'Primary Key: The {node}.vid (node revision ID) of the counter.',
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'default' => 0
+            ),
+            'nid' => array(
+                'description' => 'Index: The {node}.nid (node ID) of the counter.',
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'default' => 0
+            ),
+            'counterType' => array(
+                'description' => 'The type of the counter (e.g. countup, countdown, etc).',
+                'type' => 'varchar',
+                'not null' => TRUE,
+                'length' => 16,
+                'default' => PROGRESSION_ENUM_COUNT_DOWN
+            ),
+            'targetDate' => array(
+                'description' => 'Date and time targeted by the counter.',
+                'type' => 'datetime',
+                'not null' => TRUE
+            ),
+            'label' => array(
+                'description' => 'Human-readable label associated with the counter.',
+                'type' => 'varchar',
+                'not null' => TRUE,
+                'length' => 64,
+                'default' => ''
+            )
+        ),
+        'primary key' => array('vid'),
+        'indexes' => array(
+            'nid' => array('nid')
+        )
+    );
+
+    return $schema;
+}
+
+/**
+ * Install the current version of the database schema, in addition to any other setup tasks.
+ */
+function progression_install() {
+    drupal_install_schema('progression_counter');
+}
+
+/**
+ * Uninstall the schema for this module, in addition to any other cleanup tasks.
+ */
+function progression_uninstall() {
+    drupal_uninstall_schema('progression_counter');
+
+    variable_del('progression_prune_countdowns');
+    variable_del('progression_prune_offset');
+}
