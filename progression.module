@@ -212,7 +212,7 @@ function progression_counter_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
     case 'delete revision':
         db_query(
             'DELETE FROM {progression_counter} WHERE vid = %d',
-            node->vid
+            $node->vid
         );
         break;
     }
