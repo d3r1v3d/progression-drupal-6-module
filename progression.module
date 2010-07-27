@@ -1,8 +1,8 @@
 <?php
 // $Id$
 
-define('PROGRESSION_ENUM_COUNT_UP',   'COUNT_UP');
-define('PROGRESSION_ENUM_COUNT_DOWN', 'COUNT_DOWN');
+define('PROGRESSION_ENUM_COUNT_UP',   'up');
+define('PROGRESSION_ENUM_COUNT_DOWN', 'down');
 
 /**
  * Display help and module information.
@@ -27,14 +27,10 @@ function progression_help($path, $arg) {
  */
 function progression_node_info() {
     return array(
-        'progression_counter' => array(
+        'progression' => array(
             'name' => t('Counter'),
             'module' => 'progression',
-            'description' => t('A user-created counter object that counts down to or up from a specified target date.'),
-            'has_title' => TRUE,
-            'title_label' => t('Name'),
-            'has_body' => TRUE,
-            'body_label' => t('Description')
+            'description' => t('A user-created counter object that counts down to or up from a specified target date.')
         )
     );
 }
@@ -45,7 +41,7 @@ function progression_node_info() {
  * @return array an array of (nonduplicated) valid permissions for this module
  */
 function progression_perm() {
-    return array('create progression', 'delete progression', 'update progression', 'view progression');
+    return array('create counter', 'edit own counter');
 }
 
 /**
@@ -58,26 +54,177 @@ function progression_perm() {
  *                 and null to not override the settings in the node_access table or access control modules
  */
 function progression_access($op, $node, $account) {
-    switch ($op) {
-    case 'create':
-        return user_access('create progression', $account);
-
-    case 'delete':
-        // users are only allowed to delete their own counters
-        if ($account->uid == $node->uid) {
-            return user_access('delete progression', $account);
-        }
-        break;
-
-    case 'update':
-        // users are only allowed to update their own counters
-        if ($account->uid == $node->uid) {
-            return user_access('update progression', $account);
-        }
-        break;
+    if ($op == 'create') {
+        return user_access('create counter', $account);
     }
 
-    return null;
+    if (($op == 'update') || ($op == 'delete')) {
+        if (user_access('edit own counter', $account) && ($account->uid == $node->uid)) {
+            return TRUE;
+        }
+    }
+}
+
+/**
+ * Enables module to register paths, which determines how incoming requests are to be handled. Depending on the type of 
+ * registration requested by each path, a link is placed in the navigation block and / or an item appears in the
+ * menu administration page.
+ *
+ * @return array an array of menu items. each menu item has a key corresponding to the path being registered
+ */
+function progression_menu() {
+    $items['counter'] = array(
+        'title' => 'Progression',
+        'access callback' => TRUE,
+        'access arguments' => array('access content'),
+        'type' => MENU_CALLBACK,
+        'page callback' => 'progression_counter_json'
+    );
+    $items['admin/settings/progression'] = array(
+        'title' => 'Progression',
+        'description' => 'Configure settings related to Progression counters.',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('progression_admin_settings'),
+        'access arguments' => array('administer progression'),
+        'type' => MENU_NORMAL_ITEM,
+        'file' => 'progression.admin.inc'
+    );
+
+    return $items;
+}
+
+/**
+ * Generates a JSON representation of the given node.
+ */
+function progression_counter_json() {
+    // if: the counter url suffix has more than one path segment
+    // then: we're dealing with a malformed url. throw a 404 and return
+    if (func_num_args() > 1) {
+        drupal_not_found();
+        return;
+    }
+
+    // if: there were no suffix path segments
+    if (!func_num_args()) {
+        progression_output_json_response(progression_fetch());
+    }
+    // else: there's exactly 1 path segment
+    else {
+        $param = trim(func_get_arg(0));
+
+        if (is_numeric($param)) {
+            progression_output_json_response($param);
+        }
+        else if (in_array($param, array(PROGRESSION_ENUM_COUNT_UP, PROGRESSION_ENUM_COUNT_DOWN))) {
+            progression_output_json_response(progression_fetch($param));
+        }
+        else {
+            drupal_not_found();
+        }
+    }
+}
+
+/**
+ * Accepts either a node ID or array of node IDs and prints a JSON representation.
+ *
+ * @param array/number $param either a node ID or array of node IDs
+ */
+function progression_output_json_response($param) {
+    $data = array();
+    $nids = array();
+
+    if (is_array($param)) {
+        $nids = $param;
+    }
+    else if (is_numeric($param)) {
+        array_push($nids, $param);
+    }
+
+    foreach ($nids as $nid) {
+        $jsonNode = progression_build_json_node($nid);
+        if ($jsonNode) {
+            array_push($data, $jsonNode);
+        }
+    }
+
+    // if: a callback GET parameter was sent
+    // then: output a wrapper around the JSON data to be compatible with JSONP (used for cross-domain AJAX)
+    if (isset($_GET['callback']) && strlen($_GET['callback'])) {
+        drupal_set_header('Content-Type: text/javascript; charset=utf-8');
+        print $_GET['callback'] . '(' . drupal_to_js($data) . ')';
+        return;
+    }
+
+    drupal_json($data);
+}
+
+/**
+ * Accepts a single node ID and returns an associative array representing the applicable fields to be included in 
+ * the JSON output
+ *
+ * @return array applicable node fields to be included in the JSON output
+ */
+ function progression_build_json_node($nodeID) {
+    if (!is_numeric($nodeID)) return FALSE;
+
+    $node = node_load(
+        array('type' => 'progression', 'nid' => $nodeID)
+    );
+
+    if (!$node) return FALSE;
+
+    return array(
+        'title' => isset($node->title) ? $node->title : '',
+        'counterType' => isset($node->counterType) ? $node->counterType : '',
+        'targetDate' => isset($node->targetDate) ? $node->targetDate : ''
+    );
+ }
+
+/**
+ * Fetches progression counter objects.
+ *
+ * @return array an array of progression counter node IDs
+ */
+function progression_fetch() {
+    $queryArgs = array();
+    $andFilters = array();
+    $joinTables = array();
+
+    if (isset($_GET['user']) && strlen($_GET['user'])) {
+        array_push($andFilters, "u.name = '%s'");
+        array_push($queryArgs, $_GET['user']);
+        array_push($joinTables, 'users');
+    }
+    else if (isset($_GET['uid']) && is_numeric($_GET['uid']) && ($_GET['uid'] > 0)) {
+        array_push($andFilters, 'u.uid = %d');
+        array_push($queryArgs, $_GET['uid']);
+        array_push($joinTables, 'users');
+    }
+
+    $joins = array();
+    if (in_array('users', $joinTables)) {
+        array_push($joins, 'INNER JOIN {users} u ON (u.uid = pc.uid)');
+    }
+
+    if (func_num_args()) {
+        $param = trim(func_get_arg(0));
+        if (in_array($param, array(PROGRESSION_ENUM_COUNT_UP, PROGRESSION_ENUM_COUNT_DOWN))) {
+            array_push($andFilters, "pc.counterType = '%s'");
+            array_push($queryArgs, $param);
+        }
+    }
+
+    $query = 'SELECT nid FROM {progression_counter} pc ' . join(' ', $joins) 
+             . (count($andFilters) ? ' WHERE ' . join(' AND ', $andFilters) : '');
+
+    $result = count($queryArgs) ? call_user_func_array('db_query', array_merge(array($query), $queryArgs))
+                                : db_query($query);
+    $nids = array();
+    while ($counter = db_fetch_array($result)) {
+        $nids[] = $counter['nid'];
+    }
+
+    return $nids;
 }
 
 /**
@@ -114,15 +261,16 @@ function progression_block($op = 'list', $delta = 0, $edit = array()) {
  * @param array   $form_state the form state array
  * @return array an array containing the form elements to be displayed in the node edit form
  */
- function progression_counter_form(&$node, $form_state) {
+ function progression_form(&$node, $form_state) {
     $type = node_get_types('type', $node);
 
     if ($type->has_title) {
         $form['title'] = array(
             '#type' => 'textfield',
-            '#title' => check_plain($type->title_label),
+            '#title' => t('Title'),
+            '#default_value' => isset($node->title) ? $node->title : '',
+            '#description' => t('Human-readable description of the counter.'),
             '#required' => TRUE,
-            '#default_value' => $node->title
         );
     }
 
@@ -135,38 +283,55 @@ function progression_block($op = 'list', $delta = 0, $edit = array()) {
         '#required' => TRUE
     );
     $form['targetDate'] = array(
-        '#type' => 'textfield',
+        '#type' => 'date',
         '#title' => t('Target Date'),
-        '#default_value' => isset($node->targetDate) ? $node->targetDate : format_date(time(), 'small'),
+        '#default_value' => isset($node->targetDate) ? $node->targetDate : $edit['targetDate'],
         '#description' => t("The date associated with this counter. For countups, this is the start date; for countdowns, this is the date we're counting to."),
-        '#required' => TRUE
-    );
-    $form['label'] = array(
-        '#type' => 'textfield',
-        '#title' => t('Label'),
-        '#size' => 48,
-        '#maxLength' => 64,
-        '#default_value' => isset($node->label) ? $node->label : '',
-        '#description' => t('Human-readable description of the counter.'),
         '#required' => TRUE
     );
 
     return $form;
  }
 
+function progression_process_node_for_db($node) {
+    return array(
+        'nid' => $node->nid,
+        'uid' => $node->uid,
+        'counterType' => $node->counterType,
+        'targetDate' => $node->targetDate['year'] . '-'
+                        . (($node->targetDate['month'] < 10) ? '0' . $node->targetDate['month'] : $node->targetDate['month']) . '-'
+                        . (($node->targetDate['day'] < 10) ? '0' . $node->targetDate['day'] : $node->targetDate['day']) . ' '
+                        . '00:00:00'
+    );
+}
+
+function progression_process_db_for_node($dbNode) {
+    // input: YYYY-MM-DD hh:mm:ss, output: array('YYYY', 'MM', 'DD')
+    $dateChunks = explode(' ', $dbNode->targetDate);
+    $dateChunks = explode('-', $dateChunks[0]);
+
+    $dbNode->targetDate = array(
+        'year' => intval($dateChunks[0]),  // YYYY
+        'month' => intval($dateChunks[1]), // MM
+        'day' => intval($dateChunks[2])    // DD
+    );
+
+    return $dbNode;
+}
+
  /**
   * Insert hook for progression counter objects.
   *
   * @param object $node the node logically attached to the progression counter being inserted
   */
-function progression_counter_insert($node) {
-    // TODO: see if this is necessary
-    // _progression_counter_set_defaults(&$node);
+function progression_insert($node) {
+    dd($node);
 
+    $data = progression_process_node_for_db($node);
     db_query(
-        "INSERT INTO {progression_counter} (vid, nid, counterType, targetDate, label)"
-        . "VALUES (%d, %d, '%s', '%s', '%s')",
-        $node->vid, $node->nid, $node->counterType, $node->targetDate, $node->label
+        "INSERT INTO {progression_counter} (nid, uid, counterType, targetDate)"
+        . "VALUES (%d, %d, '%s', '%s')",
+        $data['nid'], $data['uid'], $data['counterType'], $data['targetDate']
     );
 }
 
@@ -175,16 +340,12 @@ function progression_counter_insert($node) {
  *
  * @param object $node the node logically attached to the progression counter being updated
  */
-function progression_counter_update($node) {
-    if ($node->revision) {
-        progression_counter_insert($node);
-    }
-    else {
-        db_query(
-            "UPDATE {progression_counter} SET counterType = '%s', targetDate = '%s', label = '%s' WHERE vid = %d",
-            $node->counterType, $node->targetDate, $node->label, $node->vid
-        );
-    }
+function progression_update($node) {
+    $data = progression_process_node_for_db($node);
+    db_query(
+        "UPDATE {progression_counter} SET counterType = '%s', targetDate = '%s' WHERE nid = %d",
+        $data['counterType'], $data['targetDate'], $data['nid']
+    );
 }
 
 /**
@@ -192,30 +353,10 @@ function progression_counter_update($node) {
  *
  * @param object $node the node logically attached to the progression counter being deleted
  */
-function progression_counter_delete($node) {
+function progression_delete($node) {
     db_query(
-        'DELETE FROM {progression_counter} WHERE nid = %d',
-        $node->nid
+        'DELETE FROM {progression_counter} WHERE nid = %d', $node->nid
     );
-}
-
-/**
- * Node manipulation hook for progression counter objects.
- *
- * @param object $node the node that the operation is being performed upon
- * @param string $op   the operation being performed
- * @param array  $a3
- * @param array  $a4
- */
-function progression_counter_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
-    switch ($op) {
-    case 'delete revision':
-        db_query(
-            'DELETE FROM {progression_counter} WHERE vid = %d',
-            $node->vid
-        );
-        break;
-    }
 }
 
 /**
@@ -224,13 +365,14 @@ function progression_counter_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
  * @param object $node the node logically attached to the progression counter being updated
  * @return object loaded object corresponding to the node parameter
  */
-function progression_counter_load($node) {
-    return db_fetch_object(
+function progression_load($node) {
+    $dbNode = db_fetch_object(
         db_query(
-            'SELECT * from {progression_counter} WHERE vid = %d',
-            $node->vid
+            'SELECT * from {progression_counter} WHERE nid = %d', $node->nid
         )
     );
+
+    return progression_process_db_for_node($dbNode);
 }
 
 /**
@@ -242,14 +384,14 @@ function progression_counter_load($node) {
  * @param string $path     the directory path of the theme or module
  * @return array a keyed array of theme hooks
  */
-function progression_counter_theme($existing, $type, $theme, $path) {
+function progression_theme($existing, $type, $theme, $path) {
     return array(
-        'progression_counter_info' => array(
-            'template' => 'progression_counter_info',
+        'progression_info' => array(
+            'template' => 'progression_info',
             'arguments' => array(
+                'title' => NULL,
                 'counterType' => NULL,
-                'targetDate' => NULL,
-                'label' => NULL
+                'targetDate' => NULL
             )
         )
     );
@@ -261,15 +403,14 @@ function progression_counter_theme($existing, $type, $theme, $path) {
  * @param object  $node   the node to display
  * @param boolean $teaser flag indicating whether to show the teaser only or the full form
  * @param boolean $page   flag indicating whether the node is being displayed by itself as a page
- * @param boolean $links  flag indicating whether to display node links - links are omitted for node previews
  * @return string html representation of the themed node
  */
-function progression_counter_view($node, $teaser, $page, $links) {
+function progression_view($node, $teaser = FALSE, $page = FALSE) {
     $node = node_prepare($node, $teaser);
-    $node->content['progression_counter_info'] = array(
-        '#value' => theme(
-            'progression_counter_info', 
-            $node->counterType, $node->targetDate, check_markup($node->label)
-        )
+
+    $node->content['progression_info'] = array(
+        '#value' => theme('progression_info', $node->title, $node->counterType, $node->targetDate)
     );
+
+    return $node;
 }

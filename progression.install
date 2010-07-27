@@ -9,15 +9,15 @@
 function progression_schema() {
     $schema['progression_counter'] = array(
         'fields' => array(
-            'vid' => array(
-                'description' => 'Primary Key: The {node}.vid (node revision ID) of the counter.',
+            'nid' => array(
+                'description' => 'Primary Key: The {node}.nid (node ID) of the counter.',
                 'type' => 'int',
                 'unsigned' => TRUE,
                 'not null' => TRUE,
                 'default' => 0
             ),
-            'nid' => array(
-                'description' => 'Index: The {node}.nid (node ID) of the counter.',
+            'uid' => array(
+                'description' => 'Index: The {users}.uid (user ID) of the owner of the counter.',
                 'type' => 'int',
                 'unsigned' => TRUE,
                 'not null' => TRUE,
@@ -28,24 +28,17 @@ function progression_schema() {
                 'type' => 'varchar',
                 'not null' => TRUE,
                 'length' => 16,
-                'default' => PROGRESSION_ENUM_COUNT_DOWN
+                'default' => ''
             ),
             'targetDate' => array(
-                'description' => 'Date and time targeted by the counter.',
+                'description' => 'Date targeted by the counter.',
                 'type' => 'datetime',
                 'not null' => TRUE
-            ),
-            'label' => array(
-                'description' => 'Human-readable label associated with the counter.',
-                'type' => 'varchar',
-                'not null' => TRUE,
-                'length' => 64,
-                'default' => ''
             )
         ),
-        'primary key' => array('vid'),
+        'primary key' => array('nid'),
         'indexes' => array(
-            'nid' => array('nid')
+            'uid' => array('uid')
         )
     );
 
@@ -56,14 +49,21 @@ function progression_schema() {
  * Install the current version of the database schema, in addition to any other setup tasks.
  */
 function progression_install() {
-    drupal_install_schema('progression_counter');
+    drupal_install_schema('progression');
 }
 
 /**
  * Uninstall the schema for this module, in addition to any other cleanup tasks.
  */
 function progression_uninstall() {
-    drupal_uninstall_schema('progression_counter');
+    $nids = progression_fetch();
+    if (count($nids)) {
+        db_query(
+            'DELETE FROM {node} WHERE nid in (' . join(', ', $nids) . ')'
+        );
+    }
+
+    drupal_uninstall_schema('progression');
 
     variable_del('progression_prune_countdowns');
     variable_del('progression_prune_offset');
