@@ -171,7 +171,7 @@ function progression_output_json_response($param) {
         array('type' => 'progression', 'nid' => $nodeID)
     );
 
-    if (!$node) return FALSE;
+    if (!$node || !intval($node->status)) return FALSE;
 
     return array(
         'title' => isset($node->title) ? $node->title : '',
