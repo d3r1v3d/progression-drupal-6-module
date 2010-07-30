@@ -176,7 +176,9 @@ function progression_output_json_response($param) {
     return array(
         'title' => isset($node->title) ? $node->title : '',
         'counterType' => isset($node->counterType) ? $node->counterType : '',
-        'targetDate' => isset($node->targetDate) ? $node->targetDate : ''
+        'targetDate' => isset($node->targetDate)
+            ? strtotime($node->targetDate['year'] . '/' . $node->targetDate['month'] . '/' . $node->targetDate['day']) 
+            : ''
     );
  }
 
@@ -236,6 +238,7 @@ function progression_fetch() {
  * @return string generated block content
  */
 function progression_block($op = 'list', $delta = 0, $edit = array()) {
+    // TODO: need to address block out put at some point...
     switch ($op) {
     // generate a list of all module blocks for the admin / block page
     case 'list':
