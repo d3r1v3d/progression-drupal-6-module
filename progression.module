@@ -417,3 +417,12 @@ function progression_view($node, $teaser = FALSE, $page = FALSE) {
 
     return $node;
 }
+
+/**
+ * Indicate that this module wraps Views 2 in a warm, loving embrace.
+ */
+function progression_views_api() {
+    return array(
+        'api' => 2
+    );
+}
