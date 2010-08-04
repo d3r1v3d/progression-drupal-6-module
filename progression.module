@@ -179,7 +179,7 @@ function progression_output_json_response($param) {
         'targetDate' => isset($node->targetDate)
             ? strtotime($node->targetDate['year'] . '/' . $node->targetDate['month'] . '/' . $node->targetDate['day']) 
             : '',
-        'description' => isset($node->description) ? nl2br(htmlentities($node->description), TRUE) : ''
+        'description' => isset($node->description) ? nl2br(htmlentities($node->description)) : ''
     );
  }
 
