@@ -11,5 +11,5 @@
               . (($params['targetDate']['month'] < 10) ? '0' . $params['targetDate']['month'] : $params['targetDate']['month']) . '/' 
               . (($params['targetDate']['day'] < 10) ? '0' . $params['targetDate']['day'] : $params['targetDate']['day']); ?>
     </p>
-    <p><i>Description:</i><br/><?php print nl2br(htmlentities($params['description']), TRUE); ?></p>
+    <p><i>Description:</i><br/><?php print nl2br(htmlentities($params['description'])); ?></p>
 </div>
