@@ -178,7 +178,8 @@ function progression_output_json_response($param) {
         'counterType' => isset($node->counterType) ? $node->counterType : '',
         'targetDate' => isset($node->targetDate)
             ? strtotime($node->targetDate['year'] . '/' . $node->targetDate['month'] . '/' . $node->targetDate['day']) 
-            : ''
+            : '',
+        'description' => isset($node->description) ? nl2br(htmlentities($node->description), TRUE) : ''
     );
  }
 
@@ -292,6 +293,14 @@ function progression_block($op = 'list', $delta = 0, $edit = array()) {
         '#description' => t("The date associated with this counter. For countups, this is the start date; for countdowns, this is the date we're counting to."),
         '#required' => TRUE
     );
+    $form['description'] = array(
+        '#type' => 'textarea',
+        '#title' => t('Description'),
+        '#default_value' => isset($node->description) ? $node->description : '',
+        '#description' => t('A detailed account of what this counter is supposed to represent.'),
+        '#rows' => 5,
+        '#required' => FALSE
+    );
 
     return $form;
  }
@@ -304,7 +313,8 @@ function progression_process_node_for_db($node) {
         'targetDate' => $node->targetDate['year'] . '-'
                         . (($node->targetDate['month'] < 10) ? '0' . $node->targetDate['month'] : $node->targetDate['month']) . '-'
                         . (($node->targetDate['day'] < 10) ? '0' . $node->targetDate['day'] : $node->targetDate['day']) . ' '
-                        . '00:00:00'
+                        . '00:00:00',
+        'description' => $node->description
     );
 }
 
@@ -332,9 +342,9 @@ function progression_insert($node) {
 
     $data = progression_process_node_for_db($node);
     db_query(
-        "INSERT INTO {progression_counter} (nid, uid, counterType, targetDate)"
-        . "VALUES (%d, %d, '%s', '%s')",
-        $data['nid'], $data['uid'], $data['counterType'], $data['targetDate']
+        "INSERT INTO {progression_counter} (nid, uid, counterType, targetDate, description)"
+        . "VALUES (%d, %d, '%s', '%s', '%s')",
+        $data['nid'], $data['uid'], $data['counterType'], $data['targetDate'], $data['description']
     );
 }
 
@@ -346,8 +356,8 @@ function progression_insert($node) {
 function progression_update($node) {
     $data = progression_process_node_for_db($node);
     db_query(
-        "UPDATE {progression_counter} SET counterType = '%s', targetDate = '%s' WHERE nid = %d",
-        $data['counterType'], $data['targetDate'], $data['nid']
+        "UPDATE {progression_counter} SET counterType = '%s', targetDate = '%s', description = '%s' WHERE nid = %d",
+        $data['counterType'], $data['targetDate'], $data['description'], $data['nid']
     );
 }
 
@@ -390,12 +400,7 @@ function progression_load($node) {
 function progression_theme($existing, $type, $theme, $path) {
     return array(
         'progression_info' => array(
-            'template' => 'progression_info',
-            'arguments' => array(
-                'title' => NULL,
-                'counterType' => NULL,
-                'targetDate' => NULL
-            )
+            'template' => 'progression_info'
         )
     );
 }
@@ -412,7 +417,15 @@ function progression_view($node, $teaser = FALSE, $page = FALSE) {
     $node = node_prepare($node, $teaser);
 
     $node->content['progression_info'] = array(
-        '#value' => theme('progression_info', $node->title, $node->counterType, $node->targetDate)
+        '#value' => theme(
+            'progression_info', 
+            array(
+                'title' => $node->title, 
+                'counterType' => $node->counterType, 
+                'targetDate' => $node->targetDate, 
+                'description' => $node->description
+            )
+        )
     );
 
     return $node;

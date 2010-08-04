@@ -34,6 +34,12 @@ function progression_schema() {
                 'description' => 'Date targeted by the counter.',
                 'type' => 'datetime',
                 'not null' => TRUE
+            ),
+            'description' => array(
+                'description' => 'A detailed account of what a counter is supposed to represent.',
+                'type' => 'text',
+                'size' => 'medium',
+                'not null' => FALSE
             )
         ),
         'primary key' => array('nid'),
@@ -67,4 +73,28 @@ function progression_uninstall() {
 
     variable_del('progression_prune_countdowns');
     variable_del('progression_prune_offset');
+}
+
+/**
+ * Update to Progression 1.0.1.
+ */
+function progression_update_2() {
+$status = array();
+$version = '1.0.1';
+
+db_add_field(
+    $status, 'progression_counter', 'description', array(
+        'description' => 'A detailed account of what a counter is supposed to represent.',
+        'type' => 'text',
+        'size' => 'medium',
+        'not null' => FALSE
+    )
+);
+
+$status[] = array(
+    'success' => TRUE,
+    'query' => t('Update to Progression '. $version . ' was successful!')
+);
+
+return $status;
 }

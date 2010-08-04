@@ -1,6 +1,6 @@
 ; $Id$
 name = Progression
 description = Facilitates the management and display of user-specified countups and countdowns.
-version = 6.x-1.0
+version = 6.x-1.0.1
 core = 6.x
 package = "Pansopht"
